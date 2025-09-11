@@ -1,6 +1,6 @@
-# fluttervideocompressionwithcppffmpeg
+# Flutter video compression with cpp ffmpeg
 
-A new Flutter project.
+Only works on Android
 
 ## Getting Started
 
