@@ -13,6 +13,7 @@ class MainController extends ChangeNotifier {
   String? _compressedPath;
   bool _isCompressing = false;
   int _progressTimer = 0;
+  final ScrollController _scrollController = ScrollController();
 
   // Getters
   String get metadata => _metadata;
@@ -21,6 +22,7 @@ class MainController extends ChangeNotifier {
   String? get compressedPath => _compressedPath;
   bool get isCompressing => _isCompressing;
   int get progressTimer => _progressTimer;
+  ScrollController get scrollController => _scrollController;
 
   Future<void> pickVideoAndGetMetadata() async {
     final picker = ImagePicker();
@@ -72,8 +74,6 @@ class MainController extends ChangeNotifier {
   }
 
   Future<void> compressPicked() async {
-    print("Başladı");
-
     if (_pickedPath == null || _isCompressing) return;
 
     Stopwatch stopwatch = Stopwatch()..start();
@@ -108,6 +108,7 @@ class MainController extends ChangeNotifier {
             ? 'Output size: ${_formatBytes(result.afterBytes!)} (was ${_formatBytes(result.beforeBytes!)})'
             : 'Output file not created';
         _compressStatus = '${result.result}\n$sizeLine\nPath: $output';
+        _scrollToBottom();
       } else {
         _compressStatus = 'Compression failed: ${result.result}';
       }
@@ -133,13 +134,15 @@ class MainController extends ChangeNotifier {
     return '${size.toStringAsFixed(decimals)} ${suffixes[i]}';
   }
 
-  void reset() {
-    _metadata = "Pick a video to see metadata";
-    _compressStatus = "";
-    _pickedPath = null;
-    _compressedPath = null;
-    _isCompressing = false;
-    _progressTimer = 0;
-    notifyListeners();
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: Duration(milliseconds: 500),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 }
