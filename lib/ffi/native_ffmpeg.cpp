@@ -11,6 +11,7 @@ extern "C"
 #include <libavutil/opt.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/avutil.h>
+#include <libavutil/display.h>
 }
 
 extern "C" __attribute__((visibility("default")))
@@ -182,7 +183,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
     enc_ctx->framerate = in_fps;
     enc_ctx->gop_size = 60;
     enc_ctx->max_b_frames = 2;
-    enc_ctx->bit_rate = 800'000;
+    enc_ctx->bit_rate = 2'500'000;
 
     if (ofmt->oformat->flags & AVFMT_GLOBALHEADER)
     {
@@ -194,7 +195,8 @@ compress_video(const char *input_file_path, const char *output_file_path)
         av_opt_set(enc_ctx->priv_data, "preset", "medium", 0);
         av_opt_set(enc_ctx->priv_data, "profile", "main", 0);
         av_opt_set(enc_ctx->priv_data, "tune", "film", 0);
-        av_opt_set(enc_ctx->priv_data, "crf", "30", 0);
+        av_opt_set(enc_ctx->priv_data, "crf", "22", 0);
+        enc_ctx->bit_rate = 0;
     }
     else if (strcmp(enc->name, "mpeg4") == 0)
     {
@@ -247,6 +249,27 @@ compress_video(const char *input_file_path, const char *output_file_path)
         }
     }
 
+    // Preserve rotation/display matrix if present so vertical videos play correctly
+    {
+        size_t sd_size = 0;
+        uint8_t *sd = av_stream_get_side_data(in_vst, AV_PKT_DATA_DISPLAYMATRIX, &sd_size);
+        if (sd && sd_size > 0)
+        {
+            uint8_t *dst = av_stream_new_side_data(out_vst, AV_PKT_DATA_DISPLAYMATRIX, sd_size);
+            if (dst)
+            {
+                memcpy(dst, sd, sd_size);
+            }
+        }
+
+        // Also pass through legacy rotate metadata if present
+        AVDictionaryEntry *rotate_tag = av_dict_get(in_vst->metadata, "rotate", nullptr, 0);
+        if (rotate_tag && rotate_tag->value)
+        {
+            av_dict_set(&out_vst->metadata, "rotate", rotate_tag->value, 0);
+        }
+    }
+
     ret = avformat_write_header(ofmt, nullptr);
     if (ret < 0)
     {
@@ -265,7 +288,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
 
     sws = sws_getContext(in_w, in_h, dec_ctx->pix_fmt,
                          out_w, out_h, enc_ctx->pix_fmt,
-                         SWS_BILINEAR, nullptr, nullptr, nullptr);
+                         SWS_LANCZOS, nullptr, nullptr, nullptr);
     if (!sws)
     {
         if (!(ofmt->oformat->flags & AVFMT_NOFILE))
