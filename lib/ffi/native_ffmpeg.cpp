@@ -70,6 +70,8 @@ compress_video(const char *input_file_path, const char *output_file_path)
     SwsContext *sws = nullptr;
     AVStream *in_vst = nullptr;
     AVStream *out_vst = nullptr;
+    AVStream *in_ast = nullptr;
+    AVStream *out_ast = nullptr;
 
     int ret = avformat_open_input(&ifmt, input_file_path, nullptr, nullptr);
     if (ret < 0)
@@ -91,6 +93,12 @@ compress_video(const char *input_file_path, const char *output_file_path)
         return strdup("No video stream found");
     }
     in_vst = ifmt->streams[video_stream_index];
+
+    int audio_stream_index = av_find_best_stream(ifmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+    if (audio_stream_index >= 0)
+    {
+        in_ast = ifmt->streams[audio_stream_index];
+    }
 
     dec = avcodec_find_decoder(in_vst->codecpar->codec_id);
     if (!dec)
@@ -236,6 +244,29 @@ compress_video(const char *input_file_path, const char *output_file_path)
     out_vst->time_base = enc_ctx->time_base;
     out_vst->avg_frame_rate = enc_ctx->framerate;
 
+    if (in_ast)
+    {
+        out_ast = avformat_new_stream(ofmt, nullptr);
+        if (!out_ast)
+        {
+            avcodec_free_context(&enc_ctx);
+            avcodec_free_context(&dec_ctx);
+            avformat_close_input(&ifmt);
+            avformat_free_context(ofmt);
+            return strdup("Failed to create output audio stream");
+        }
+        if (avcodec_parameters_copy(out_ast->codecpar, in_ast->codecpar) < 0)
+        {
+            avcodec_free_context(&enc_ctx);
+            avcodec_free_context(&dec_ctx);
+            avformat_close_input(&ifmt);
+            avformat_free_context(ofmt);
+            return strdup("Failed to copy audio codec parameters");
+        }
+        out_ast->codecpar->codec_tag = 0;
+        out_ast->time_base = in_ast->time_base;
+    }
+
     if (!(ofmt->oformat->flags & AVFMT_NOFILE))
     {
         ret = avio_open(&ofmt->pb, output_file_path, AVIO_FLAG_WRITE);
@@ -345,6 +376,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
     }
 
     int64_t next_pts = 0;
+    int64_t video_start_pts = AV_NOPTS_VALUE;
     while ((ret = av_read_frame(ifmt, pkt)) >= 0)
     {
         if (pkt->stream_index == video_stream_index)
@@ -362,8 +394,21 @@ compress_video(const char *input_file_path, const char *output_file_path)
                               sws_frame->data,
                               sws_frame->linesize);
 
-                    // Generate monotonic PTS in encoder time_base
-                    sws_frame->pts = next_pts++;
+                    int64_t in_pts = (frame->best_effort_timestamp != AV_NOPTS_VALUE)
+                                         ? frame->best_effort_timestamp
+                                         : frame->pts;
+                    if (in_pts == AV_NOPTS_VALUE)
+                    {
+
+                        sws_frame->pts = next_pts++;
+                    }
+                    else
+                    {
+                        if (video_start_pts == AV_NOPTS_VALUE)
+                            video_start_pts = in_pts;
+                        int64_t adj_pts = in_pts - video_start_pts;
+                        sws_frame->pts = av_rescale_q(adj_pts, in_vst->time_base, enc_ctx->time_base);
+                    }
 
                     ret = avcodec_send_frame(enc_ctx, sws_frame);
                     if (ret == 0)
@@ -380,6 +425,13 @@ compress_video(const char *input_file_path, const char *output_file_path)
                     }
                 }
             }
+        }
+        else if (in_ast && pkt->stream_index == audio_stream_index)
+        {
+            // Stream copy audio packets
+            pkt->stream_index = out_ast->index;
+            av_packet_rescale_ts(pkt, in_ast->time_base, out_ast->time_base);
+            av_interleaved_write_frame(ofmt, pkt);
         }
         av_packet_unref(pkt);
     }
