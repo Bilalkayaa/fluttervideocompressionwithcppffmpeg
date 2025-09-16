@@ -5,6 +5,8 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:isolate';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 class MainController extends ChangeNotifier {
   String _metadata = "Pick a video to see metadata";
@@ -144,5 +146,53 @@ class MainController extends ChangeNotifier {
         );
       }
     });
+  }
+
+  Future<void> saveVideoToGallery(
+    String videoPath,
+    BuildContext context,
+  ) async {
+    PermissionStatus status;
+
+    if (Platform.operatingSystemVersion.contains("13") ||
+        Platform.operatingSystemVersion.contains("14")) {
+      status = await Permission.videos.request();
+    } else {
+      status = await Permission.storage.request();
+    }
+
+    if (status.isGranted) {
+      final file = File(videoPath);
+      if (await file.exists()) {
+        final extension = file.uri.pathSegments.last.split('.').last;
+
+        final directory = Directory(videoPath).parent.path;
+
+        final newFileName =
+            "compressedvideo_${DateTime.now().millisecondsSinceEpoch}.$extension";
+
+        final newFilePath = '$directory/$newFileName';
+
+        final renamedFile = await file.rename(newFilePath);
+
+        await PhotoManager.editor.saveVideo(renamedFile, title: newFileName);
+
+        print("Video is saved with new name: $newFileName");
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Video saved')));
+      } else {
+        print("File does not exist at path: $videoPath");
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('File does not exist')));
+      }
+    } else {
+      print("There is no permission");
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Permission denied')));
+      openAppSettings();
+    }
   }
 }

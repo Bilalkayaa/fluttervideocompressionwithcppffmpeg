@@ -94,6 +94,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
     }
     in_vst = ifmt->streams[video_stream_index];
 
+    // Audio stream bulma (opsiyonel)
     int audio_stream_index = av_find_best_stream(ifmt, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
     if (audio_stream_index >= 0)
     {
@@ -137,18 +138,18 @@ compress_video(const char *input_file_path, const char *output_file_path)
         return strdup("Failed to create output context");
     }
 
-    // Prefer software encoders to avoid permission issues with HW encoders
+    // Kotlin kodundaki gibi encoder önceliği: libx264 > libx265 > mpeg4
     enc = avcodec_find_encoder_by_name("libx264");
     if (!enc)
-        enc = avcodec_find_encoder_by_name("mpeg4");
-    if (!enc)
         enc = avcodec_find_encoder_by_name("libx265");
+    if (!enc)
+        enc = avcodec_find_encoder_by_name("mpeg4");
     if (!enc)
     {
         avcodec_free_context(&dec_ctx);
         avformat_close_input(&ifmt);
         avformat_free_context(ofmt);
-        return strdup("No suitable software encoder found (libx264/mpeg4/libx265)\n");
+        return strdup("No suitable software encoder found (libx264/libx265/mpeg4)\n");
     }
 
     out_vst = avformat_new_stream(ofmt, enc);
@@ -169,51 +170,78 @@ compress_video(const char *input_file_path, const char *output_file_path)
         return strdup("Could not allocate encoder context");
     }
 
+    // Kotlin kodundaki scaling mantığını uygula - 1280x720 max
     int in_w = dec_ctx->width;
     int in_h = dec_ctx->height;
-    double scale_w = 1280.0 / (in_w > 0 ? in_w : 1280.0);
-    double scale_h = 720.0 / (in_h > 0 ? in_h : 720.0);
-    double scale = fmin(1.0, fmin(scale_w, scale_h));
-    int out_w = ((int)floor((in_w * scale) / 2.0)) * 2;
-    int out_h = ((int)floor((in_h * scale) / 2.0)) * 2;
-    if (out_w <= 0)
-        out_w = 1280;
-    if (out_h <= 0)
-        out_h = 720;
+    
+    // DefaultVideoStrategy.atMost(720) mantığını taklit et
+    int target_height = 720;
+    int target_width = 1280;
+    
+    int out_w, out_h;
+    if (in_w <= target_width && in_h <= target_height) {
+        // Video zaten hedef boyuttan küçük, orijinal boyutu koru
+        out_w = in_w;
+        out_h = in_h;
+    } else {
+        // Aspect ratio'yu koruyarak ölçekle
+        double scale = std::min((double)target_width / in_w, (double)target_height / in_h);
+        out_w = ((int)floor((in_w * scale) / 2.0)) * 2; // 2'nin katı olması için
+        out_h = ((int)floor((in_h * scale) / 2.0)) * 2;
+    }
+    
+    if (out_w <= 0) out_w = 1280;
+    if (out_h <= 0) out_h = 720;
 
     enc_ctx->width = out_w;
     enc_ctx->height = out_h;
     enc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
+    
+    // Frame rate ayarları - Kotlin kodundaki gibi
     AVRational in_fps = av_guess_frame_rate(ifmt, in_vst, nullptr);
     if (in_fps.num == 0 || in_fps.den == 0)
         in_fps = (AVRational){30, 1};
     enc_ctx->time_base = av_inv_q(in_fps);
     enc_ctx->framerate = in_fps;
-    enc_ctx->gop_size = 60;
-    enc_ctx->max_b_frames = 2;
-    enc_ctx->bit_rate = 2'500'000;
+    
+    // Kotlin kodundaki video strategy ayarları
+    enc_ctx->gop_size = 12; // Daha küçük GOP size (Kotlin'de keyFrameInterval 3 saniye)
+    enc_ctx->max_b_frames = 1; // Daha az B frame
 
     if (ofmt->oformat->flags & AVFMT_GLOBALHEADER)
     {
         enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
 
+    // Encoder-specific ayarlar - Kotlin kodunun yaklaşımını benimse
     if (strcmp(enc->name, "libx264") == 0)
     {
-        av_opt_set(enc_ctx->priv_data, "preset", "medium", 0);
+        // Kotlin kodundaki bitrate: 1280 * 720 * 4 = 3,686,400 bps
+        enc_ctx->bit_rate = 1280 * 720 * 4;
+        
+        // Daha agresif sıkıştırma için ayarlar
+        av_opt_set(enc_ctx->priv_data, "preset", "slower", 0); // Daha yavaş ama daha iyi sıkıştırma
         av_opt_set(enc_ctx->priv_data, "profile", "main", 0);
         av_opt_set(enc_ctx->priv_data, "tune", "film", 0);
-        av_opt_set(enc_ctx->priv_data, "crf", "22", 0);
-        enc_ctx->bit_rate = 0;
+        
+        // Rate control - ABR (Average Bitrate) kullan, CRF değil
+        av_opt_set_int(enc_ctx->priv_data, "qmin", 10, 0);
+        av_opt_set_int(enc_ctx->priv_data, "qmax", 51, 0);
+        av_opt_set_int(enc_ctx->priv_data, "bufsize", enc_ctx->bit_rate * 2, 0);
+        av_opt_set_int(enc_ctx->priv_data, "maxrate", enc_ctx->bit_rate * 1.5, 0);
+    }
+    else if (strcmp(enc->name, "libx265") == 0)
+    {
+        enc_ctx->bit_rate = 1280 * 720 * 3; // x265 için biraz daha düşük
+        av_opt_set(enc_ctx->priv_data, "preset", "medium", 0);
+        av_opt_set_int(enc_ctx->priv_data, "qmin", 10, 0);
+        av_opt_set_int(enc_ctx->priv_data, "qmax", 51, 0);
     }
     else if (strcmp(enc->name, "mpeg4") == 0)
     {
-        enc_ctx->max_b_frames = 0; // safer for mpeg4 on Android
+        enc_ctx->bit_rate = 1280 * 720 * 2; // MPEG4 için daha düşük
+        enc_ctx->max_b_frames = 0; // MPEG4 için B frame'siz
         enc_ctx->gop_size = 12;
-        // Some mpeg4 encoders prefer standard time_base like 1/30
-        enc_ctx->time_base = (AVRational){1, 30};
-        enc_ctx->framerate = (AVRational){30, 1};
-        // Optional rate control tuning
         av_opt_set_int(enc_ctx->priv_data, "qmin", 3, 0);
         av_opt_set_int(enc_ctx->priv_data, "qmax", 31, 0);
     }
@@ -244,6 +272,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
     out_vst->time_base = enc_ctx->time_base;
     out_vst->avg_frame_rate = enc_ctx->framerate;
 
+    // Audio stream - Kotlin kodundaki DefaultAudioStrategy benzeri
     if (in_ast)
     {
         out_ast = avformat_new_stream(ofmt, nullptr);
@@ -280,7 +309,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
         }
     }
 
-    // Preserve rotation/display matrix if present so vertical videos play correctly
+    // Rotation/display matrix koruma
     {
         size_t sd_size = 0;
         uint8_t *sd = av_stream_get_side_data(in_vst, AV_PKT_DATA_DISPLAYMATRIX, &sd_size);
@@ -293,7 +322,6 @@ compress_video(const char *input_file_path, const char *output_file_path)
             }
         }
 
-        // Also pass through legacy rotate metadata if present
         AVDictionaryEntry *rotate_tag = av_dict_get(in_vst->metadata, "rotate", nullptr, 0);
         if (rotate_tag && rotate_tag->value)
         {
@@ -317,6 +345,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
         return strdup(msg);
     }
 
+    // Kotlin kodundaki gibi LANCZOS scaling kullan (daha iyi kalite)
     sws = sws_getContext(in_w, in_h, dec_ctx->pix_fmt,
                          out_w, out_h, enc_ctx->pix_fmt,
                          SWS_LANCZOS, nullptr, nullptr, nullptr);
@@ -337,14 +366,10 @@ compress_video(const char *input_file_path, const char *output_file_path)
     AVPacket *enc_pkt = av_packet_alloc();
     if (!frame || !sws_frame || !pkt || !enc_pkt)
     {
-        if (pkt)
-            av_packet_free(&pkt);
-        if (enc_pkt)
-            av_packet_free(&enc_pkt);
-        if (frame)
-            av_frame_free(&frame);
-        if (sws_frame)
-            av_frame_free(&sws_frame);
+        if (pkt) av_packet_free(&pkt);
+        if (enc_pkt) av_packet_free(&enc_pkt);
+        if (frame) av_frame_free(&frame);
+        if (sws_frame) av_frame_free(&sws_frame);
         sws_freeContext(sws);
         if (!(ofmt->oformat->flags & AVFMT_NOFILE))
             avio_closep(&ofmt->pb);
@@ -399,7 +424,6 @@ compress_video(const char *input_file_path, const char *output_file_path)
                                          : frame->pts;
                     if (in_pts == AV_NOPTS_VALUE)
                     {
-
                         sws_frame->pts = next_pts++;
                     }
                     else
@@ -428,7 +452,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
         }
         else if (in_ast && pkt->stream_index == audio_stream_index)
         {
-            // Stream copy audio packets
+            // Audio stream copy
             pkt->stream_index = out_ast->index;
             av_packet_rescale_ts(pkt, in_ast->time_base, out_ast->time_base);
             av_interleaved_write_frame(ofmt, pkt);
@@ -436,6 +460,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
         av_packet_unref(pkt);
     }
 
+    // Encoder flush
     avcodec_send_frame(enc_ctx, nullptr);
     while (avcodec_receive_packet(enc_ctx, enc_pkt) == 0)
     {
@@ -449,6 +474,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
 
     av_write_trailer(ofmt);
 
+    // Cleanup
     av_packet_free(&pkt);
     av_packet_free(&enc_pkt);
     av_frame_free(&frame);

@@ -39,7 +39,9 @@ dependencies:
   image_picker: ^1.2.0
   video_player: ^2.10.0
   provider: ^6.1.5+1
-
+  photo_manager: ^3.7.1
+  permission_handler: ^12.0.1
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter

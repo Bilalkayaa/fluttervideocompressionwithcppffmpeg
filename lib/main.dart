@@ -1,3 +1,5 @@
+// ignore_for_file: invalid_use_of_visible_for_testing_member
+
 import 'package:flutter/material.dart';
 import 'package:fluttervideocompressionwithcppffmpeg/controller/main_controller.dart';
 import 'package:fluttervideocompressionwithcppffmpeg/video_player.dart';
@@ -26,8 +28,33 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class MyHomePage extends StatelessWidget {
+class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
+
+  @override
+  State<MyHomePage> createState() => _MyHomePageState();
+}
+
+class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // ignore: invalid_use_of_protected_member
+      context.read<MainController>().notifyListeners();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -374,7 +401,12 @@ class MyHomePage extends StatelessWidget {
               width: double.infinity,
               child: _buildModernButton(
                 isSuccess: true,
-                onPressed: () {},
+                onPressed: () {
+                  controller.saveVideoToGallery(
+                    controller.compressedPath!,
+                    context,
+                  );
+                },
                 text: "Save",
                 icon: Icons.save,
               ),
@@ -439,7 +471,7 @@ class MyHomePage extends StatelessWidget {
                           : const Color(0xFF6C5CE7))
                       .withOpacity(0.3),
             ).copyWith(
-              elevation: MaterialStateProperty.all(onPressed != null ? 8 : 0),
+              elevation: WidgetStateProperty.all(onPressed != null ? 8 : 0),
             ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
