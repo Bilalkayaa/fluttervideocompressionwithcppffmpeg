@@ -122,7 +122,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: const Color(0xFF6C5CE7).withOpacity(0.3),
+                color: const Color(0xFF6C5CE7).withValues(alpha:0.3),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -211,10 +211,10 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A).withOpacity(0.6),
+                color: const Color(0xFF0F172A).withValues(alpha:0.6),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: const Color(0xFF374151).withOpacity(0.3),
+                  color: const Color(0xFF374151).withValues(alpha:0.3),
                 ),
               ),
               child: Text(
@@ -287,8 +287,8 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                 shape: BoxShape.circle,
                 gradient: LinearGradient(
                   colors: [
-                    const Color(0xFF6C5CE7).withOpacity(0.2),
-                    const Color(0xFFA29BFE).withOpacity(0.2),
+                    const Color(0xFF6C5CE7).withValues(alpha:0.2),
+                    const Color(0xFFA29BFE).withValues(alpha:0.2),
                   ],
                 ),
               ),
@@ -320,12 +320,14 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                   size: 24,
                 ),
                 const SizedBox(width: 8),
-                const Text(
-                  "Compression Complete!",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                Center(
+                  child: const Text(
+                    "Compression Complete!",
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
                   ),
                 ),
               ],
@@ -356,10 +358,10 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
               height: 200,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFF0F172A).withOpacity(0.6),
+                color: const Color(0xFF0F172A).withValues(alpha:0.6),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: const Color(0xFF374151).withOpacity(0.3),
+                  color: const Color(0xFF374151).withValues(alpha:0.3),
                 ),
               ),
               child: SingleChildScrollView(
@@ -378,7 +380,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
             const SizedBox(height: 20),
 
             // Play Button
-            Container(
+            SizedBox(
               width: double.infinity,
               child: _buildModernButton(
                 onPressed: () {
@@ -397,7 +399,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
               ),
             ),
             SizedBox(height: 12),
-            Container(
+            SizedBox(
               width: double.infinity,
               child: _buildModernButton(
                 isSuccess: true,
@@ -425,15 +427,15 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.white.withOpacity(0.1),
-            Colors.white.withOpacity(0.05),
+            Colors.white.withValues(alpha:0.1),
+            Colors.white.withValues(alpha:0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.1)),
+        border: Border.all(color: Colors.white.withValues(alpha:0.1)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha:0.1),
             blurRadius: 10,
             offset: const Offset(0, 5),
           ),
@@ -469,7 +471,7 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                   (isSuccess
                           ? const Color(0xFF10B981)
                           : const Color(0xFF6C5CE7))
-                      .withOpacity(0.3),
+                      .withValues(alpha:0.3),
             ).copyWith(
               elevation: WidgetStateProperty.all(onPressed != null ? 8 : 0),
             ),
@@ -486,11 +488,11 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
                 ),
               )
             else
-              Icon(icon, size: 20),
+              Icon(icon, size: 20,color: Colors.white,),
             const SizedBox(width: 12),
             Text(
               text,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600,color:Colors.white),
             ),
           ],
         ),
@@ -506,9 +508,9 @@ class _MyHomePageState extends State<MyHomePage> with WidgetsBindingObserver {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF6C5CE7).withOpacity(0.2),
+        color: const Color(0xFF6C5CE7).withValues(alpha:0.2),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFF6C5CE7).withOpacity(0.3)),
+        border: Border.all(color: const Color(0xFF6C5CE7).withValues(alpha:0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -138,7 +138,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
         return strdup("Failed to create output context");
     }
 
-    // Kotlin kodundaki gibi encoder önceliği: libx264 > libx265 > mpeg4
+    // Encoder önceliği: libx264 > libx265 > mpeg4
     enc = avcodec_find_encoder_by_name("libx264");
     if (!enc)
         enc = avcodec_find_encoder_by_name("libx265");
@@ -170,11 +170,10 @@ compress_video(const char *input_file_path, const char *output_file_path)
         return strdup("Could not allocate encoder context");
     }
 
-    // Kotlin kodundaki scaling mantığını uygula - 1280x720 max
+    // Scaling mantığı - 1280x720 max
     int in_w = dec_ctx->width;
     int in_h = dec_ctx->height;
     
-    // DefaultVideoStrategy.atMost(720) mantığını taklit et
     int target_height = 720;
     int target_width = 1280;
     
@@ -197,53 +196,71 @@ compress_video(const char *input_file_path, const char *output_file_path)
     enc_ctx->height = out_h;
     enc_ctx->pix_fmt = AV_PIX_FMT_YUV420P;
     
-    // Frame rate ayarları - Kotlin kodundaki gibi
+    // Frame rate ayarları
     AVRational in_fps = av_guess_frame_rate(ifmt, in_vst, nullptr);
     if (in_fps.num == 0 || in_fps.den == 0)
         in_fps = (AVRational){30, 1};
     enc_ctx->time_base = av_inv_q(in_fps);
     enc_ctx->framerate = in_fps;
     
-    // Kotlin kodundaki video strategy ayarları
-    enc_ctx->gop_size = 12; // Daha küçük GOP size (Kotlin'de keyFrameInterval 3 saniye)
-    enc_ctx->max_b_frames = 1; // Daha az B frame
+    // GOP ve B-frame ayarları - daha iyi sıkıştırma için optimize edildi
+    enc_ctx->gop_size = 250;  // ~10 saniye (30fps için) - daha iyi sıkıştırma
+    enc_ctx->max_b_frames = 3; // Daha fazla B-frame = daha iyi sıkıştırma
 
     if (ofmt->oformat->flags & AVFMT_GLOBALHEADER)
     {
         enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
     }
 
-    // Encoder-specific ayarlar - Kotlin kodunun yaklaşımını benimse
+    // *** KALITE ODAKLI CRF AYARLARI ***
     if (strcmp(enc->name, "libx264") == 0)
     {
-        // Kotlin kodundaki bitrate: 1280 * 720 * 4 = 3,686,400 bps
-        enc_ctx->bit_rate = 1280 * 720 * 4;
+        // CRF modunda bitrate 0 olmalı
+        enc_ctx->bit_rate = 0;
         
-        // Daha agresif sıkıştırma için ayarlar
-        av_opt_set(enc_ctx->priv_data, "preset", "slower", 0); // Daha yavaş ama daha iyi sıkıştırma
-        av_opt_set(enc_ctx->priv_data, "profile", "main", 0);
-        av_opt_set(enc_ctx->priv_data, "tune", "film", 0);
+        // CRF: 18-23 arası yüksek kalite, 23-28 arası dengeli
+        // 23 = Yüksek kalite + iyi sıkıştırma dengesi (önerilen)
+        av_opt_set(enc_ctx->priv_data, "crf", "23", 0);
         
-        // Rate control - ABR (Average Bitrate) kullan, CRF değil
+        // Preset: medium dengeli, slow daha iyi kalite ama yavaş
+        av_opt_set(enc_ctx->priv_data, "preset", "medium", 0);
+        
+        // Profile: high daha iyi sıkıştırma özellikleri
+        av_opt_set(enc_ctx->priv_data, "profile", "high", 0);
+        
+        // Psy optimizasyonları - görsel kaliteyi artırır
+        av_opt_set(enc_ctx->priv_data, "psy", "1", 0);
+        av_opt_set(enc_ctx->priv_data, "aq-mode", "2", 0);
+        
+        // Maksimum kalite düşüşü limiti
+        av_opt_set(enc_ctx->priv_data, "crf_max", "28", 0);
+        
+        // Rate control ayarları
         av_opt_set_int(enc_ctx->priv_data, "qmin", 10, 0);
         av_opt_set_int(enc_ctx->priv_data, "qmax", 51, 0);
-        av_opt_set_int(enc_ctx->priv_data, "bufsize", enc_ctx->bit_rate * 2, 0);
-        av_opt_set_int(enc_ctx->priv_data, "maxrate", enc_ctx->bit_rate * 1.5, 0);
     }
     else if (strcmp(enc->name, "libx265") == 0)
     {
-        enc_ctx->bit_rate = 1280 * 720 * 3; // x265 için biraz daha düşük
+        enc_ctx->bit_rate = 0;
+        
+        // x265 için CRF değeri biraz daha yüksek olabilir (daha iyi sıkıştırma)
+        av_opt_set(enc_ctx->priv_data, "crf", "28", 0);
         av_opt_set(enc_ctx->priv_data, "preset", "medium", 0);
+        av_opt_set(enc_ctx->priv_data, "profile", "main", 0);
+        
         av_opt_set_int(enc_ctx->priv_data, "qmin", 10, 0);
         av_opt_set_int(enc_ctx->priv_data, "qmax", 51, 0);
     }
     else if (strcmp(enc->name, "mpeg4") == 0)
     {
-        enc_ctx->bit_rate = 1280 * 720 * 2; // MPEG4 için daha düşük
-        enc_ctx->max_b_frames = 0; // MPEG4 için B frame'siz
+        // MPEG4 CRF desteklemiyor, bitrate ve q-scale kullan
+        enc_ctx->bit_rate = out_w * out_h * 6; // Daha yüksek bitrate
+        enc_ctx->max_b_frames = 0; // MPEG4 için B frame'siz daha stabil
         enc_ctx->gop_size = 12;
-        av_opt_set_int(enc_ctx->priv_data, "qmin", 3, 0);
-        av_opt_set_int(enc_ctx->priv_data, "qmax", 31, 0);
+        
+        // Daha düşük qmax = daha iyi kalite
+        av_opt_set_int(enc_ctx->priv_data, "qmin", 2, 0);
+        av_opt_set_int(enc_ctx->priv_data, "qmax", 10, 0);
     }
 
     ret = avcodec_open2(enc_ctx, enc, nullptr);
@@ -272,7 +289,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
     out_vst->time_base = enc_ctx->time_base;
     out_vst->avg_frame_rate = enc_ctx->framerate;
 
-    // Audio stream - Kotlin kodundaki DefaultAudioStrategy benzeri
+    // Audio stream - stream copy (yeniden kodlamadan kopyala)
     if (in_ast)
     {
         out_ast = avformat_new_stream(ofmt, nullptr);
@@ -345,7 +362,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
         return strdup(msg);
     }
 
-    // Kotlin kodundaki gibi LANCZOS scaling kullan (daha iyi kalite)
+    // LANCZOS scaling - en iyi kalite
     sws = sws_getContext(in_w, in_h, dec_ctx->pix_fmt,
                          out_w, out_h, enc_ctx->pix_fmt,
                          SWS_LANCZOS, nullptr, nullptr, nullptr);
@@ -452,7 +469,7 @@ compress_video(const char *input_file_path, const char *output_file_path)
         }
         else if (in_ast && pkt->stream_index == audio_stream_index)
         {
-            // Audio stream copy
+            // Audio stream copy - kalite kaybı olmadan kopyala
             pkt->stream_index = out_ast->index;
             av_packet_rescale_ts(pkt, in_ast->time_base, out_ast->time_base);
             av_interleaved_write_frame(ofmt, pkt);
