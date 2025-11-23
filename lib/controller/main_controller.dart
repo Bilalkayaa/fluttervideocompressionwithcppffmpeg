@@ -152,47 +152,117 @@ class MainController extends ChangeNotifier {
     String videoPath,
     BuildContext context,
   ) async {
-    PermissionStatus status;
+    try {
+      Permission permission;
+      PermissionStatus status;
 
-    if (Platform.operatingSystemVersion.contains("13") ||
-        Platform.operatingSystemVersion.contains("14")) {
-      status = await Permission.videos.request();
-    } else {
-      status = await Permission.storage.request();
-    }
-
-    if (status.isGranted) {
-      final file = File(videoPath);
-      if (await file.exists()) {
-        final extension = file.uri.pathSegments.last.split('.').last;
-
-        final directory = Directory(videoPath).parent.path;
-
-        final newFileName =
-            "compressedvideo_${DateTime.now().millisecondsSinceEpoch}.$extension";
-
-        final newFilePath = '$directory/$newFileName';
-
-        final renamedFile = await file.rename(newFilePath);
-
-        await PhotoManager.editor.saveVideo(renamedFile, title: newFileName);
-
-        print("Video is saved with new name: $newFileName");
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Video saved')));
+      if (Platform.isAndroid) {
+        // Android 13+ (API 33+) için videos izni, Android 12 ve altı için storage
+        // Önce videos iznini kontrol et
+        final videosStatus = await Permission.videos.status;
+        
+        if (videosStatus.isGranted || videosStatus.isLimited) {
+          // Videos izni verilmiş, direkt kullan
+          permission = Permission.videos;
+          status = videosStatus;
+        } else {
+          // Videos izni verilmemiş, storage iznini kontrol et (Android 12 ve altı için)
+          final storageStatus = await Permission.storage.status;
+          
+          if (storageStatus.isGranted) {
+            // Storage izni verilmiş
+            permission = Permission.storage;
+            status = storageStatus;
+          } else {
+            // Hiçbir izin verilmemiş, Android 13+ ise videos, değilse storage iste
+            // Android 13+ için videos izni kullan
+            permission = Permission.videos;
+            status = await permission.request();
+            
+            // Eğer videos izni desteklenmiyorsa (Android 12 ve altı), storage dene
+            if (!status.isGranted && !status.isLimited) {
+              permission = Permission.storage;
+              status = await permission.request();
+            }
+          }
+        }
       } else {
-        print("File does not exist at path: $videoPath");
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('File does not exist')));
+        // iOS için
+        permission = Permission.photos;
+        status = await permission.status;
+        
+        if (!status.isGranted && !status.isLimited) {
+          status = await permission.request();
+        }
       }
-    } else {
-      print("There is no permission");
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Permission denied')));
-      openAppSettings();
+
+      // İzin verilmişse veya limited ise kaydet
+      if (status.isGranted || status.isLimited) {
+        final file = File(videoPath);
+        if (await file.exists()) {
+          try {
+            // PhotoManager ile direkt kaydet
+            await PhotoManager.editor.saveVideo(
+              file, 
+              title: "compressedvideo_${DateTime.now().millisecondsSinceEpoch}",
+            );
+
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Video saved successfully'),
+                  backgroundColor: Color(0xFF10B981),
+                ),
+              );
+            }
+          } catch (e) {
+            print("Error saving video: $e");
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error saving video: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        } else {
+          print("File does not exist at path: $videoPath");
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('File does not exist'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } else {
+        // İzin reddedildi
+        print("Permission denied: $status");
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Permission denied. Please grant storage permission in settings.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+          // Sadece kalıcı olarak reddedildiyse ayarlara yönlendir
+          if (status.isPermanentlyDenied) {
+            await openAppSettings();
+          }
+        }
+      }
+    } catch (e) {
+      print("Error in saveVideoToGallery: $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 }
