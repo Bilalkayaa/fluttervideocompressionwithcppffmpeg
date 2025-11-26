@@ -157,29 +157,21 @@ class MainController extends ChangeNotifier {
       PermissionStatus status;
 
       if (Platform.isAndroid) {
-        // Android 13+ (API 33+) için videos izni, Android 12 ve altı için storage
-        // Önce videos iznini kontrol et
         final videosStatus = await Permission.videos.status;
-        
+
         if (videosStatus.isGranted || videosStatus.isLimited) {
-          // Videos izni verilmiş, direkt kullan
           permission = Permission.videos;
           status = videosStatus;
         } else {
-          // Videos izni verilmemiş, storage iznini kontrol et (Android 12 ve altı için)
           final storageStatus = await Permission.storage.status;
-          
+
           if (storageStatus.isGranted) {
-            // Storage izni verilmiş
             permission = Permission.storage;
             status = storageStatus;
           } else {
-            // Hiçbir izin verilmemiş, Android 13+ ise videos, değilse storage iste
-            // Android 13+ için videos izni kullan
             permission = Permission.videos;
             status = await permission.request();
-            
-            // Eğer videos izni desteklenmiyorsa (Android 12 ve altı), storage dene
+
             if (!status.isGranted && !status.isLimited) {
               permission = Permission.storage;
               status = await permission.request();
@@ -187,23 +179,20 @@ class MainController extends ChangeNotifier {
           }
         }
       } else {
-        // iOS için
         permission = Permission.photos;
         status = await permission.status;
-        
+
         if (!status.isGranted && !status.isLimited) {
           status = await permission.request();
         }
       }
 
-      // İzin verilmişse veya limited ise kaydet
       if (status.isGranted || status.isLimited) {
         final file = File(videoPath);
         if (await file.exists()) {
           try {
-            // PhotoManager ile direkt kaydet
             await PhotoManager.editor.saveVideo(
-              file, 
+              file,
               title: "compressedvideo_${DateTime.now().millisecondsSinceEpoch}",
             );
 
@@ -238,16 +227,17 @@ class MainController extends ChangeNotifier {
           }
         }
       } else {
-        // İzin reddedildi
         print("Permission denied: $status");
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('Permission denied. Please grant storage permission in settings.'),
+              content: Text(
+                'Permission denied. Please grant storage permission in settings.',
+              ),
               duration: Duration(seconds: 3),
             ),
           );
-          // Sadece kalıcı olarak reddedildiyse ayarlara yönlendir
+
           if (status.isPermanentlyDenied) {
             await openAppSettings();
           }
@@ -257,10 +247,7 @@ class MainController extends ChangeNotifier {
       print("Error in saveVideoToGallery: $e");
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
         );
       }
     }
