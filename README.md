@@ -2,15 +2,7 @@
 
 Only works on Android
 
-## Getting Started
+![Alt metin](https://github.com/user-attachments/assets/6a0dbeae-5140-41ec-b3fa-40540ae29339)
+![Alt metin](https://github.com/user-attachments/assets/12998db1-4445-4bf2-a897-b64fa49e5790)
+![Alt metin](https://github.com/user-attachments/assets/3e30e1fa-d5d0-4e48-9a89-c4b9bec88dcd)
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
