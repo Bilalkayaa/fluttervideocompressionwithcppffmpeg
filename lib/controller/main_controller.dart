@@ -152,47 +152,104 @@ class MainController extends ChangeNotifier {
     String videoPath,
     BuildContext context,
   ) async {
-    PermissionStatus status;
+    try {
+      Permission permission;
+      PermissionStatus status;
 
-    if (Platform.operatingSystemVersion.contains("13") ||
-        Platform.operatingSystemVersion.contains("14")) {
-      status = await Permission.videos.request();
-    } else {
-      status = await Permission.storage.request();
-    }
+      if (Platform.isAndroid) {
+        final videosStatus = await Permission.videos.status;
 
-    if (status.isGranted) {
-      final file = File(videoPath);
-      if (await file.exists()) {
-        final extension = file.uri.pathSegments.last.split('.').last;
+        if (videosStatus.isGranted || videosStatus.isLimited) {
+          permission = Permission.videos;
+          status = videosStatus;
+        } else {
+          final storageStatus = await Permission.storage.status;
 
-        final directory = Directory(videoPath).parent.path;
+          if (storageStatus.isGranted) {
+            permission = Permission.storage;
+            status = storageStatus;
+          } else {
+            permission = Permission.videos;
+            status = await permission.request();
 
-        final newFileName =
-            "compressedvideo_${DateTime.now().millisecondsSinceEpoch}.$extension";
-
-        final newFilePath = '$directory/$newFileName';
-
-        final renamedFile = await file.rename(newFilePath);
-
-        await PhotoManager.editor.saveVideo(renamedFile, title: newFileName);
-
-        print("Video is saved with new name: $newFileName");
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Video saved')));
+            if (!status.isGranted && !status.isLimited) {
+              permission = Permission.storage;
+              status = await permission.request();
+            }
+          }
+        }
       } else {
-        print("File does not exist at path: $videoPath");
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('File does not exist')));
+        permission = Permission.photos;
+        status = await permission.status;
+
+        if (!status.isGranted && !status.isLimited) {
+          status = await permission.request();
+        }
       }
-    } else {
-      print("There is no permission");
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Permission denied')));
-      openAppSettings();
+
+      if (status.isGranted || status.isLimited) {
+        final file = File(videoPath);
+        if (await file.exists()) {
+          try {
+            await PhotoManager.editor.saveVideo(
+              file,
+              title: "compressedvideo_${DateTime.now().millisecondsSinceEpoch}",
+            );
+
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Video saved successfully'),
+                  backgroundColor: Color(0xFF10B981),
+                ),
+              );
+            }
+          } catch (e) {
+            print("Error saving video: $e");
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Error saving video: $e'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          }
+        } else {
+          print("File does not exist at path: $videoPath");
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('File does not exist'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+      } else {
+        print("Permission denied: $status");
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Permission denied. Please grant storage permission in settings.',
+              ),
+              duration: Duration(seconds: 3),
+            ),
+          );
+
+          if (status.isPermanentlyDenied) {
+            await openAppSettings();
+          }
+        }
+      }
+    } catch (e) {
+      print("Error in saveVideoToGallery: $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 }
